@@ -237,7 +237,7 @@ def main():
         pygame.mouse.set_visible(False)
         font = pygame.font.Font(None, 20)
 
-        start_text = font.render("Pull the TRIGGER to start calibration", True, WHITE)
+        start_text = font.render("", True, WHITE)
         start_text_w = start_text.get_rect()[2] // 2
 
         pygame.display.set_caption("GunCon 2 two-point calibration")
@@ -265,8 +265,8 @@ def main():
             cx, cy = int(guncon.pos_normalised.x * width), int(guncon.pos_normalised.y * height)
             trigger = False
             for button, value in guncon.update():
-                if button == ecodes.BTN_LEFT and value == 1:
-                    trigger = True
+#                if button == ecodes.BTN_LEFT and value == 1:
+#                    trigger = True
                 if button in (ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE) and value == 1:
                     running = False
 
