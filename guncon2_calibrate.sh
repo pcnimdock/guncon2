@@ -1,5 +1,5 @@
 #!/bin/bash
-# Calibration script is done by ## Substring ## and all credit's goes to him! 
+# Calibration script is done by ## Substring & psakhis/sergi ## and all credit's goes to them! 
 # This has only been slightly modified to work with Batocera using a GunCon2.
 
 calibration_and_setup() {
@@ -14,7 +14,7 @@ calibration_and_setup() {
   y_min=$(get_calibration_value "$calibration_data" y min)
   y_max=$(get_calibration_value "$calibration_data" y max)
   y_fuzz=$(get_calibration_value "$calibration_data" y fuzz)
-  echo "SUBSYSTEM==\"input\", ACTION==\"add\", KERNEL==\"event*\", ATTRS{idVendor}==\"0b9a\", ATTRS{idProduct}==\"016a\", MODE=\"0666\", ENV{ID_INPUT_JOYSTICK}=\"0\", ENV{ID_INPUT_GUN}=\"0\", ENV{ID_INPUT_MOUSE}=\"0\", RUN+=\"/usr/bin/guncon-add\", RUN+=\"/bin/bash -c 'evdev-joystick --e %E{DEVNAME} -a 0 -f $x_fuzz -m $x_min -M $x_max ; evdev-joystick --e %E{DEVNAME} -a 1 -f $y_fuzz -m $y_min -M $y_max'\"" | tee /etc/udev/rules.d/99-guncon.rules
+  echo "SUBSYSTEM==\"input\", ACTION==\"add\", KERNEL==\"event*\", ATTRS{idVendor}==\"0b9a\", ATTRS{idProduct}==\"016a\", MODE=\"0666\", ENV{ID_INPUT_JOYSTICK}=\"0\", ENV{ID_INPUT_GUN}=\"0\", ENV{ID_INPUT_MOUSE}=\"0\", RUN+=\"/usr/bin/guncon-add\", RUN+=\"/bin/bash -c 'evdev-joystick --e %E{DEVNAME} -a 0 -f 0 -m -32768 -M 32767 ; evdev-joystick --e %E{DEVNAME} -a 1 -f 0 -m -32768 -M 32767 ; evdev-joystick --e %E{DEVNAME} -a 3 -f $x_fuzz -m $x_min -M $x_max ; evdev-joystick --e %E{DEVNAME} -a 4 -f $y_fuzz -m $y_min -M $y_max'\"" | tee /etc/udev/rules.d/99-guncon.rules
   echo >> /etc/udev/rules.d/99-guncon.rules "SUBSYSTEM==\"input\", ACTION==\"add\", KERNEL==\"event*\", ATTRS{name}==\"GunCon2-Gun\", MODE=\"0666\", ENV{ID_INPUT_GUN}=\"1\", ENV{ID_INPUT_JOYSTICK}=\"0\", ENV{ID_INPUT_MOUSE}=\"1\""
   udevadm control --reload-rules && udevadm trigger
 }
