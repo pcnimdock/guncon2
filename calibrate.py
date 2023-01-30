@@ -18,39 +18,44 @@ log = logging.getLogger("guncon2-calibration")
 
 Postion = namedtuple("Postion", ["x", "y"])
 
+CENTER = 32678
+
 class Guncon2(object):
     def __init__(self, device):
         self.device = device
         self.pos = Postion(0, 0)
-        self.center = Postion(self.max_x/2, self.max_y/2)
-        self.directionX = 0
-        self.directionY = 0
+        self.pos_n = Postion(0, 0)
 
     @property
     def absinfo(self):
-        return [self.device.absinfo(ecodes.ABS_X), self.device.absinfo(ecodes.ABS_Y)]
+        return [self.device.absinfo(ecodes.ABS_RX), self.device.absinfo(ecodes.ABS_RY)]
 
     @property
     def min_x(self):
-        return self.device.absinfo(ecodes.ABS_X).min
+        return self.device.absinfo(ecodes.ABS_RX).min
 
     @property
     def max_x(self):
-        return self.device.absinfo(ecodes.ABS_X).max
+        return self.device.absinfo(ecodes.ABS_RX).max
 
     @property
     def min_y(self):
-        return self.device.absinfo(ecodes.ABS_Y).min
+        return self.device.absinfo(ecodes.ABS_RY).min
 
     @property
     def max_y(self):
-        return self.device.absinfo(ecodes.ABS_Y).max
+        return self.device.absinfo(ecodes.ABS_RY).max
 
     @property
     def pos_normalised(self):
         return Postion(self.normalise(self.pos.x, self.min_x, self.max_x),
                        self.normalise(self.pos.y, self.min_y, self.max_y))
 
+    #psakhis: des_normalised number
+    @staticmethod
+    def desnormalise(self):
+        return Postion(int(((self.pos_n.x + CENTER) * (self.max_x - self.min_x) / 65535) + self.min_x),
+                       int(((self.pos_n.y + CENTER) * (self.max_y - self.min_y) / 65535) + self.min_y))
     @staticmethod
     def normalise(pos, min_, max_):
         return (pos - min_) / float(max_ - min_)
@@ -61,24 +66,14 @@ class Guncon2(object):
             if ev:
                 if ev.type == ecodes.EV_ABS:
                     if ev.code == ecodes.ABS_X:
-                        self.pos = Postion(ev.value, self.pos.y)
+                        self.pos_n = Postion(ev.value, self.pos_n.y)
+                        self.pos = self.desnormalise(self)
                     elif ev.code == ecodes.ABS_Y:
-                        self.pos = Postion(self.pos.x, ev.value)
-                    elif ev.code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
-                        self.recompute_min_max(ev.code, ev.value)
-                        if ev.code == ecodes.ABS_HAT0X:
-                            self.directionX = ev.value
-                        if ev.code == ecodes.ABS_HAT0Y:
-                            self.directionY = ev.value
+                        self.pos_n = Postion(self.pos_n.x, ev.value)
+                        self.pos = self.desnormalise(self)
                 if ev.type == ecodes.EV_KEY:
-                    if ev.value == 1:
-                        self.recompute_fuzz(ev.code)
                     yield ev.code, ev.value
             else:
-                if bool(self.directionX) :
-                    self.recompute_min_max(ecodes.ABS_HAT0X, self.directionX)
-                if bool(self.directionY) :
-                    self.recompute_min_max(ecodes.ABS_HAT0Y, self.directionY)
                 break
 
     def calibrate(self, targets, shots, width=320, height=240):
@@ -89,7 +84,8 @@ class Guncon2(object):
 
         # calculate the ratio between on-screen units and gun units for each axes
         try:
-            gsratio_x = (max(targets_x) - min(targets_x)) / (max(shots_x) - min(shots_x))
+            #gsratio_x = (max(targets_x) - min(targets_x)) / (max(shots_x) - min(shots_x))
+            gsratio_x = (max(shots_x) - min(shots_x)) / (385 - (width - max(targets_x) + min(targets_x)))     #8MHZ precision
         except ZeroDivisionError:
             log.error("Failed to calibrate X axis")
             return
@@ -106,41 +102,11 @@ class Guncon2(object):
         max_y = max(shots_y) + ((height - max(targets_y)) * gsratio_y)
 
         # set the X and Y calibration values
-        self.device.set_absinfo(ecodes.ABS_X, min=int(min_x), max=int(max_x))
-        self.device.set_absinfo(ecodes.ABS_Y, min=int(min_y), max=int(max_y))
+        self.device.set_absinfo(ecodes.ABS_RX, min=int(min_x), max=int(max_x))
+        self.device.set_absinfo(ecodes.ABS_RY, min=int(min_y), max=int(max_y))
 
         log.info(f"Calibration: x=({self.absinfo[0]}) y=({self.absinfo[1]})")
 
-    def recompute_min_max(self, axis, direction):
-        if direction == 0: return
-        min_x = self.absinfo[0].min
-        max_x = self.absinfo[0].max
-        min_y = self.absinfo[1].min
-        max_y = self.absinfo[1].max
-        if axis == ecodes.ABS_HAT0X:
-            if self.pos[0]  < self.center[0]:
-                min_x -= direction
-            else:
-                max_x -= direction
-        elif axis == ecodes.ABS_HAT0Y:
-            if self.pos[1]  < self.center[1]:
-                min_y -= direction
-            else:
-                max_y -= direction
-        self.device.set_absinfo(ecodes.ABS_X, min=int(min_x), max=int(max_x))
-        self.device.set_absinfo(ecodes.ABS_Y, min=int(min_y), max=int(max_y))
-
-    def recompute_fuzz(self, button):
-        if button == ecodes.BTN_SELECT:
-            x_new_fuzz = self.absinfo[0].fuzz + 1
-            y_new_fuzz = self.absinfo[1].fuzz + 1
-        elif button ==  ecodes.BTN_START:
-            x_new_fuzz = self.absinfo[0].fuzz - 1
-            y_new_fuzz = self.absinfo[1].fuzz - 1
-        else:
-            return 1
-        self.device.set_absinfo(ecodes.ABS_X, fuzz = x_new_fuzz)
-        self.device.set_absinfo(ecodes.ABS_Y, fuzz = y_new_fuzz)
 
 WIDTH = 320
 HEIGHT = 240
@@ -194,8 +160,7 @@ def main():
             raise ValueError("{} is an invalid point".format(value))
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument("-r", "--resolution", default="320x240")
-    parser.add_argument("-r", "--resolution")
+    parser.add_argument("-r", "--resolution", default="320x240")
     parser.add_argument("--center-target", default=(160, 120), type=point_type)
     parser.add_argument("--topleft-target", default=(50, 50), type=point_type)
     parser.add_argument("--capture", default=None)
@@ -203,13 +168,12 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
 
-    if args.resolution:
-        try:
-            w, h = args.resolution.split("x")
-            width, height = int(w), int(h)
-        except:
-            parser.error("Invalid resolution, eg. 320x240")
-            return
+    try:
+        w, h = args.resolution.split("x")
+        width, height = int(w), int(h)
+    except:
+        parser.error("Invalid resolution, eg. 320x240")
+        return
 
     guncon2_dev = None
     # find the first guncon2
@@ -222,22 +186,15 @@ def main():
         sys.stderr.write("Failed to find any attached GunCon2 devices")
         return 1
 
-    pygame.init()
-    if not args.resolution:
-        disp_info = pygame.display.Info()
-        width, height = disp_info.current_w, disp_info.current_h
-
-    log.info("Using screen resolution: {}x{}".format(width, height))
-
     with guncon2_dev.grab_context():
 
         guncon = Guncon2(guncon2_dev)
 
+        pygame.init()
         pygame.font.init()
-        pygame.mouse.set_visible(False)
         font = pygame.font.Font(None, 20)
 
-        start_text = font.render("", True, WHITE)
+        start_text = font.render("Pull the TRIGGER to start calibration", True, WHITE)
         start_text_w = start_text.get_rect()[2] // 2
 
         pygame.display.set_caption("GunCon 2 two-point calibration")
@@ -247,7 +204,7 @@ def main():
 
         state = STATE_START
         running = True
-        targets = [(50, 50), (width - 50, 50), (width - 50, height - 50), (50, height - 50)]
+        targets = [(50, 50), (320 - 50, 50), (320 - 50, 240 - 50), (50, 240 - 50)]
         target_shots = [(0, 0), (0, 0), (0, 0), (0, 0)]
 
         cursor = draw_cursor(color=(255, 255, 0))
@@ -265,10 +222,10 @@ def main():
             cx, cy = int(guncon.pos_normalised.x * width), int(guncon.pos_normalised.y * height)
             trigger = False
             for button, value in guncon.update():
-#                if button == ecodes.BTN_LEFT and value == 1:
-#                    trigger = True
+                if button == ecodes.BTN_LEFT and value == 1:
+                    trigger = True
                 if button in (ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE) and value == 1:
-                    running = False
+                    running = False    
 
             raw_pos_txt = font.render(f"({raw_x}, {raw_y})", True, (128, 128, 255))
             cal_pos_txt = font.render(f"({cx}, {cy})", True, (128, 128, 255))
@@ -315,8 +272,6 @@ def main():
 
             pygame.display.flip()
             clock.tick(30)
-
-        log.info(f"Calibration: x=({guncon.absinfo[0]}) y=({guncon.absinfo[1]})")
 
 
 if __name__ == "__main__":
