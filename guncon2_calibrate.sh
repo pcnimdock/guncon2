@@ -3,11 +3,8 @@
 # This has only been slightly modified to work with Batocera using a GunCon2.
 
 calibration_and_setup() {
-  #calibration_output="$(python /usr/local/bin/calibrate.py)"
-  #calibration_output="$(python ./calibrate.py 2>&1)"
   calibration_output="$(/usr/bin/switchres 320 240 60 -s -l "python /usr/bin/calibrate.py -r 320x240" 2>&1)"
   calibration_data="$(echo $calibration_output | grep "guncon2-calibration:Calibration" |tail -1)"
-  #calibration_data="INFO:guncon2-calibration:Calibration: x=(val 280, min 169, max 745, fuzz 5, flat 0, res 0) y=(val 185, min 31, max 263, fuzz 5, flat 0, res 0)"
   x_min=$(get_calibration_value "$calibration_data" x min)
   x_max=$(get_calibration_value "$calibration_data" x max)
   x_fuzz=$(get_calibration_value "$calibration_data" x fuzz)
@@ -36,3 +33,5 @@ get_calibration_value() {
 }
 
 calibration_and_setup
+
+batocera-save-overlay
