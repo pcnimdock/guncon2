@@ -269,6 +269,10 @@ static int guncon3_open(struct input_dev *input) {
     {
        printk(KERN_ERR "key no sended");
     }
+    else
+    {
+       printk(KERN_ERR "key sended!!!");
+    }
     kfree(gmode);
 
     retval = usb_submit_urb(guncon3->urb, GFP_KERNEL);
