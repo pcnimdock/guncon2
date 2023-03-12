@@ -41,12 +41,12 @@ MODULE_PARM_DESC(debug, "Enable Debugging");
     input_report_key(dev, BTN_7, (data[2] & 0x40));
     */
 #define GUNCON3_TRIGGER             BIT(14)
-#define GUNCON3_BTN_A1              BIT(3)
+#define GUNCON3_BTN_A1              BIT(4)
 #define GUNCON3_BTN_A2              BIT(2)
 #define GUNCON3_BTN_A3              BIT(24)
 #define GUNCON3_BTN_B1              BIT(11)
 #define GUNCON3_BTN_B2              BIT(10)
-#define GUNCON3_BTN_B3              BIT(24)
+#define GUNCON3_BTN_B3              BIT(23)
 #define GUNCON3_BTN_C1              BIT(16)
 #define GUNCON3_BTN_C2              BIT(4)
 #define GUNCON3_BTN_OUT_RANGE       BIT(13)
@@ -84,6 +84,7 @@ struct gc_mode {
     unsigned char mode;
 };
 
+const unsigned char key[8]={0x01,0x12,0x6f,0x32,0x24,0x60,0x17,0x21};
 static const unsigned char KEY_TABLE[320] = {
         0x75, 0xC3, 0x10, 0x31, 0xB5, 0xD3, 0x69, 0x84, 0x89, 0xBA, 0xD6, 0x89, 0xBD, 0x70, 0x19, 0x8E, 0x58, 0xA8,
         0x3D, 0x9B, 0x5D, 0xF0, 0x49, 0xE8, 0xAD, 0x9D, 0x7A, 0x0D, 0x7E, 0x24, 0xDA, 0xFC, 0x0D, 0x14, 0xC5, 0x23,
@@ -105,48 +106,66 @@ static const unsigned char KEY_TABLE[320] = {
         0xA5, 0xBB, 0x21, 0xC8
 };
 
-static int guncon3_decode(unsigned char *data, const unsigned char *key,unsigned char *data_decoded) {
-    int x, y, key_index;
-    unsigned char bkey, keyr, byte;
-    char a_sum, b_sum, key_offset;
 
-    b_sum = ((data[13] ^ data[12]) + data[11] + data[10] - data[9] - data[8]) ^ data[7];
-    a_sum = (((data[6] ^ b_sum) - data[5] - data[4]) ^ data[3]) + data[2] + data[1] - data[0];
+
+static int guncon3_decode(unsigned char *data,unsigned char *data_decoded) {
+    int x, y, key_index;
+    int bkey, keyr, byte;
+    int a_sum,b_sum;
+    int key_offset;
+
+    b_sum = data[13] ^ data[12];
+        b_sum = b_sum + data[11] + data[10] - data[9] - data[8];
+        b_sum = b_sum ^ data[7];
+        b_sum = b_sum & 0xFF;
+
+        a_sum = data[6] ^ b_sum;
+        a_sum = a_sum - data[5] - data[4];
+        a_sum = a_sum ^ data[3];
+        a_sum = a_sum + data[2] + data[1] - data[0];
+        a_sum = a_sum & 0xFF;
 
     if (a_sum != key[7]) {
             if (debug)
                 printk(KERN_ERR "checksum mismatch: %02x %02x\n", a_sum, key[7]);
             return -1;
         }
-    key_offset = (((((key[1] ^ key[2]) - key[3] - key[4]) ^ key[5]) + key[6] - key[7]) ^ data[14]) + (unsigned char)0x26;
+    key_offset = key[1] ^ key[2];
+        key_offset = key_offset - key[3] - key[4];
+        key_offset = key_offset ^ key[5];
+        key_offset = key_offset + key[6] - key[7];
+        key_offset = key_offset ^ data[14];
+        key_offset = key_offset + 0x26;
+        key_offset = key_offset & 0xFF;
+
     key_index = 4;
 
     //byte E is part of the key offset
     // byte D is ignored, possibly a padding byte - make the checksum workout
     for (x = 12; x >= 0; x--) {
-        byte = data[x];
-        for (y = 4; y > 1; y--) { // loop 3 times
-            key_offset--;
+            byte = data[x];
+            for (y = 4; y > 1; y--) { // loop 3 times
+                key_offset--;
 
-            bkey = KEY_TABLE[key_offset + 0x41];
-            keyr = key[key_index];
-            if (--key_index == 0)
-                key_index = 7;
+                bkey = KEY_TABLE[key_offset + 0x41];
+                keyr = key[key_index];
+                if (--key_index == 0)
+                    key_index = 7;
 
-            if ((bkey & 3) == 0)
-                byte =(byte - bkey) - keyr;
-            else if ((bkey & 3) == 1)
-                byte = ((byte + bkey) + keyr);
-            else
-                byte = ((byte ^ bkey) ^ keyr);
-        }
-        data_decoded[x] = byte;
+                if ((bkey & 3) == 0)
+                    byte =(byte - bkey) - keyr;
+                else if ((bkey & 3) == 1)
+                    byte = ((byte + bkey) + keyr);
+                else
+                    byte = ((byte ^ bkey) ^ keyr);
+            }
+            data_decoded[x] = byte;
     }
             if (debug)
-        {    printk(KERN_ERR "%x %x %x %x %x %x %x %x %x %x %x %x",
+        {    printk(KERN_ERR "%x %x %x %x %x %x %x %x %x %x %x %x %x",
                            data_decoded[0],data_decoded[1],data_decoded[2],data_decoded[3],data_decoded[3],
                            data_decoded[5],data_decoded[6],data_decoded[7],data_decoded[8],data_decoded[9],
-                           data_decoded[10],data_decoded[11]);
+                           data_decoded[10],data_decoded[11],data_decoded[12]);
         }
     return 0;
 }
@@ -188,7 +207,7 @@ static void guncon3_usb_irq(struct urb *urb) {
 
     if (urb->actual_length == 15) {
         //decode
-        status = guncon3_decode(data,guncon3->key,data_decoded);
+        status = guncon3_decode(data,data_decoded);
         if(status<0)
         {
             return;
@@ -197,18 +216,33 @@ static void guncon3_usb_irq(struct urb *urb) {
         //modif guncon3
         x= ((short)data_decoded[4] << 8) | (short)data_decoded[3];
         y= ((short)data_decoded[6] << 8) | (short)data_decoded[5];
-        
-        hat_y = data_decoded[11];
-        hat_x = data_decoded[12];
+
+        if(debug)
+        {
+            //stick B
+            x=data_decoded[11];
+            y=data_decoded[12];
+        }
+
+        //stick A
+        hat_y = data_decoded[10];
+        hat_x = data_decoded[9];
 
         input_report_abs(guncon3->input_device, ABS_RX, x);
         input_report_abs(guncon3->input_device, ABS_RY, y);
 
+
         /* Buttons */
-        buttons = ((data_decoded[2] << 16) | data_decoded[1]<<8 | data_decoded[0]) ^ 0xffffff;
+        buttons = data_decoded[2];
+        buttons <<=8;
+        buttons = data_decoded[1];
+        buttons <<=8;
+        buttons = data_decoded[0];
+        buttons <<=8;
 
         input_report_abs(guncon3->input_device, ABS_HAT0X, hat_x);
         input_report_abs(guncon3->input_device, ABS_HAT0Y, hat_y);
+
 
         // main buttons
         input_report_key(guncon3->input_device, BTN_LEFT, buttons & GUNCON3_TRIGGER);
