@@ -40,17 +40,17 @@ MODULE_PARM_DESC(debug, "Enable Debugging");
     input_report_key(dev, BTN_6, (data[2] & 0x80));    // Joystick buttons
     input_report_key(dev, BTN_7, (data[2] & 0x40));
     */
-#define GUNCON3_TRIGGER             BIT(14)
-#define GUNCON3_BTN_A1              BIT(4)
-#define GUNCON3_BTN_A2              BIT(2)
-#define GUNCON3_BTN_A3              BIT(24)
-#define GUNCON3_BTN_B1              BIT(11)
-#define GUNCON3_BTN_B2              BIT(10)
-#define GUNCON3_BTN_B3              BIT(23)
-#define GUNCON3_BTN_C1              BIT(16)
-#define GUNCON3_BTN_C2              BIT(4)
-#define GUNCON3_BTN_OUT_RANGE       BIT(13)
-#define GUNCON3_BTN_ONE_REFERENCE   BIT(12)
+#define GUNCON3_TRIGGER             0x00002800
+#define GUNCON3_BTN_A1              0x00000004
+#define GUNCON3_BTN_A2              0x00000002
+#define GUNCON3_BTN_A3              0x00800000
+#define GUNCON3_BTN_B1              0x00000300
+#define GUNCON3_BTN_B2              0x00000200
+#define GUNCON3_BTN_B3              0x00400000
+#define GUNCON3_BTN_C1              0x00008000
+#define GUNCON3_BTN_C2              0x00000008
+#define GUNCON3_BTN_OUT_RANGE       0x00000800
+#define GUNCON3_BTN_ONE_REFERENCE   0x00000100
 
 #define GUNCON3_BTN_SELECT  GUNCON3_BTN_C1
 #define GUNCON3_BTN_START   GUNCON3_BTN_C2
@@ -161,12 +161,13 @@ static int guncon3_decode(unsigned char *data,unsigned char *data_decoded) {
             }
             data_decoded[x] = byte;
     }
-            if (debug)
+      /*      if (debug)
         {    printk(KERN_ERR "%x %x %x %x %x %x %x %x %x %x %x %x %x",
                            data_decoded[0],data_decoded[1],data_decoded[2],data_decoded[3],data_decoded[3],
                            data_decoded[5],data_decoded[6],data_decoded[7],data_decoded[8],data_decoded[9],
                            data_decoded[10],data_decoded[11],data_decoded[12]);
         }
+    */
     return 0;
 }
 
@@ -235,11 +236,11 @@ static void guncon3_usb_irq(struct urb *urb) {
         /* Buttons */
         buttons = data_decoded[2];
         buttons <<=8;
-        buttons = data_decoded[1];
+        buttons += data_decoded[1];
         buttons <<=8;
-        buttons = data_decoded[0];
-        buttons <<=8;
-
+        buttons += data_decoded[0];
+        
+        //printk(KERN_ERR "Button:%08x",buttons);
         input_report_abs(guncon3->input_device, ABS_HAT0X, hat_x);
         input_report_abs(guncon3->input_device, ABS_HAT0Y, hat_y);
 

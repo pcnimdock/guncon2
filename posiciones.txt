@@ -6,12 +6,21 @@ B2 0 a 0 0 0 0 0 0 0 80 7f 7f
 B3 0 9 40 0 0 0 0 0 0 80 7f 80
 C1 0 8 0 0 0 0 0 0 0 80 7f 7f
 C2 0 8 0 0 0 0 0 0 0 80 7f 7f
-stick_A up     cf 5c da 92 92 0 0 0 0 7e 0 7f
-stick_a down   5a d4 3d 0 0 0 0 0 0 8f ff 7f
-sitck_A left   57 45 95 0 0 0 0 0 0 0 84 7f
-stick_a right  0 8 0 0 0 0 0 0 0 ff 71 7f
-Sb up           0 9 0 0 0 0 0 0 0 80 7e 80
-Sb down         e3 8 0 0 0 0 0 0 0 80 7e 8b
-Sb left         0 8 0 0 0 0 0 0 0 80 7e 0
-sb right        0 9 0 0 0 0 0 0 0 80 7e ff
+stick_A up     cf 5c da 92 92 0 0 0 0 7e 0  7f
+stick_a down   5a d4 3d 0  0  0 0 0 0 8f ff 7f
+sitck_A left   57 45 95 0  0  0 0 0 0 0  84 7f
+stick_a right   0  8  0 0  0  0 0 0 0 ff 71 7f
+Sb up           0  9  0 0  0  0 0 0 0 80 7e 80
+Sb down         e3 8  0 0  0  0 0 0 0 80 7e 8b
+Sb left         0  8  0 0  0  0 0 0 0 80 7e 0
+sb right        0  9  0 0  0  0 0 0 0 80 7e ff
 
+A1  Button:00000804
+A2  Button:00000902
+B1  Button:00000c00
+B2  Button:00000a00
+A3  Button:00800800
+B3  Button:00400900
+C1  Button:00008900
+C2  Button:00000908
+Trg Button:00002800
