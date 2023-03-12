@@ -17,6 +17,10 @@
 #include <linux/usb.h>
 #include <linux/usb/input.h>
 
+static unsigned long debug = 0;
+module_param(debug, ulong, 0444);
+MODULE_PARM_DESC(debug, "Enable Debugging");
+
 #define NAMCO_VENDOR_ID    0x0b9a
 #define GUNCON3_PRODUCT_ID 0x0800
 
@@ -98,6 +102,11 @@ static int guncon3_decode(unsigned char *data, const unsigned char *key,unsigned
     b_sum = ((data[13] ^ data[12]) + data[11] + data[10] - data[9] - data[8]) ^ data[7];
     a_sum = (((data[6] ^ b_sum) - data[5] - data[4]) ^ data[3]) + data[2] + data[1] - data[0];
 
+    if (a_sum != key[7]) {
+            if (debug)
+                printk(KERN_ERR "checksum mismatch: %02x %02x\n", a_sum, key[7]);
+            return -1;
+        }
     key_offset = (((((key[1] ^ key[2]) - key[3] - key[4]) ^ key[5]) + key[6] - key[7]) ^ data[14]) + (unsigned char)0x26;
     key_index = 4;
 
@@ -163,6 +172,10 @@ static void guncon3_usb_irq(struct urb *urb) {
     if (urb->actual_length == 15) {
         //decode
         status = guncon3_decode(data,guncon3->key,data_decoded);
+        if(status<0)
+        {
+            return;
+        }
         /* Aiming */
         //modif guncon3
         x = (data_decoded[4] << 8) | data_decoded[3];
@@ -213,6 +226,11 @@ static void guncon3_usb_irq(struct urb *urb) {
 
         input_sync(guncon3->input_device);
     }
+    else
+    {
+        if (debug)
+                    printk(KERN_ERR "Size input != 15");
+    }
 
 exit:
     /* Resubmit to fetch new fresh URBs */
@@ -225,6 +243,7 @@ exit:
 
 static int guncon3_open(struct input_dev *input) {
     unsigned char *gmode;
+    int status;
     struct guncon3 *guncon3 = input_get_drvdata(input);
     struct usb_device *usb_dev = interface_to_usbdev(guncon3->intf);
     int retval;
@@ -244,9 +263,12 @@ static int guncon3_open(struct input_dev *input) {
     guncon3->key[5] = 0x60;
     guncon3->key[6] = 0x17;
     guncon3->key[7] = 0x21;
-    usb_interrupt_msg(usb_dev, usb_sndisocpipe(usb_dev, 0),
+    status=usb_interrupt_msg(usb_dev, usb_sndisocpipe(usb_dev, 0),
                     guncon3->key, 8, &actual_length, 100000);
-
+    if(status<0)
+    {
+       printk(KERN_ERR "key no sended");
+    }
     kfree(gmode);
 
     retval = usb_submit_urb(guncon3->urb, GFP_KERNEL);
