@@ -17,33 +17,48 @@
 #include <linux/usb.h>
 #include <linux/usb/input.h>
 
-#define NAMCO_VENDOR_ID 0x0b9a
-#define GUNCON2_PRODUCT_ID 0x016a
+#define NAMCO_VENDOR_ID    0x0b9a
+#define GUNCON3_PRODUCT_ID 0x0800
 
-#define GUNCON2_DPAD_LEFT BIT(15)
-#define GUNCON2_DPAD_RIGHT BIT(13)
-#define GUNCON2_DPAD_UP BIT(12)
-#define GUNCON2_DPAD_DOWN BIT(14)
-#define GUNCON2_TRIGGER BIT(5)
-#define GUNCON2_BTN_A BIT(11)
-#define GUNCON2_BTN_B BIT(10)
-#define GUNCON2_BTN_C BIT(9)
-#define GUNCON2_BTN_START BIT(7)
-#define GUNCON2_BTN_SELECT BIT(6)
+
+//data[10] = A3_Stick B3_Stick 0          0           0               0  0  0
+//data[11] = C1       0       Trigger   Out_range   one_reference   B1 B2 0
+//data[12] = 0        0       0         0           C2              A1 A2 0
+
+#define GUNCON3_TRIGGER             BIT(14)
+#define GUNCON3_BTN_A1              BIT(3)
+#define GUNCON3_BTN_A2              BIT(2)
+#define GUNCON3_BTN_A3              BIT(24)
+#define GUNCON3_BTN_B1              BIT(11)
+#define GUNCON3_BTN_B2              BIT(10)
+#define GUNCON3_BTN_B3              BIT(24)
+#define GUNCON3_BTN_C1              BIT(16)
+#define GUNCON3_BTN_C2              BIT(4)
+#define GUNCON3_BTN_OUT_RANGE       BIT(13)
+#define GUNCON3_BTN_ONE_REFERENCE   BIT(12)
+
+#define GUNCON3_BTN_SELECT  GUNCON3_BTN_C1
+#define GUNCON3_BTN_START   GUNCON3_BTN_C2
+#define GUNCON3_BTN_A       GUNCON3_BTN_B2
+#define GUNCON3_BTN_B       GUNCON3_BTN_B1
+#define GUNCON3_BTN_C       GUNCON3_BTN_A2
+
 
 // default calibration, can be updated with evdev-joystick
-#define X_MIN 175
+#define X_MIN 176
 #define X_MAX 720
 #define Y_MIN 20
 #define Y_MAX 240
 
-struct guncon2 {
+struct guncon3 {
     struct input_dev *input_device;
     struct usb_interface *intf;
     struct urb *urb;
     struct mutex pm_mutex;
     bool is_open;
     char phys[64];
+    bool is_recalibrate;
+    unsigned char key[8];
 };
 
 struct gc_mode {
@@ -54,21 +69,80 @@ struct gc_mode {
     unsigned char mode;
 };
 
-static void guncon2_usb_irq(struct urb *urb) {
-    struct guncon2 *guncon2 = urb->context;
+static const unsigned char KEY_TABLE[320] = {
+        0x75, 0xC3, 0x10, 0x31, 0xB5, 0xD3, 0x69, 0x84, 0x89, 0xBA, 0xD6, 0x89, 0xBD, 0x70, 0x19, 0x8E, 0x58, 0xA8,
+        0x3D, 0x9B, 0x5D, 0xF0, 0x49, 0xE8, 0xAD, 0x9D, 0x7A, 0x0D, 0x7E, 0x24, 0xDA, 0xFC, 0x0D, 0x14, 0xC5, 0x23,
+        0x91, 0x11, 0xF5, 0xC0, 0x4B, 0xCD, 0x44, 0x1C, 0xC5, 0x21, 0xDF, 0x61, 0x54, 0xED, 0xA2, 0x81, 0xB7, 0xE5,
+        0x74, 0x94, 0xB0, 0x47, 0xEE, 0xF1, 0xA5, 0xBB, 0x21, 0xC8, 0x91, 0xFD, 0x4C, 0x8B, 0x20, 0xC1, 0x7C, 0x09, 0x58,
+        0x14, 0xF6, 0x00, 0x52, 0x55, 0xBF, 0x41, 0x75, 0xC0, 0x13, 0x30, 0xB5, 0xD0, 0x69, 0x85, 0x89, 0xBB, 0xD6, 0x88,
+        0xBC, 0x73, 0x18, 0x8D, 0x58, 0xAB, 0x3D, 0x98, 0x5C, 0xF2, 0x48, 0xE9, 0xAC, 0x9F, 0x7A, 0x0C, 0x7C, 0x25, 0xD8,
+        0xFF, 0xDC, 0x7D, 0x08, 0xDB, 0xBC, 0x18, 0x8C, 0x1D, 0xD6, 0x3C, 0x35, 0xE1, 0x2C, 0x14, 0x8E, 0x64, 0x83, 0x39,
+        0xB0, 0xE4, 0x4E, 0xF7, 0x51, 0x7B, 0xA8, 0x13, 0xAC, 0xE9, 0x43, 0xC0, 0x08, 0x25, 0x0E, 0x15, 0xC4, 0x20, 0x93,
+        0x13, 0xF5, 0xC3, 0x48, 0xCC, 0x47, 0x1C, 0xC5, 0x20, 0xDE, 0x60, 0x55, 0xEE, 0xA0, 0x40, 0xB4, 0xE7, 0x74,
+        0x95, 0xB0, 0x46, 0xEC, 0xF0, 0xA5, 0xB8, 0x23, 0xC8, 0x04, 0x06, 0xFC, 0x28, 0xCB, 0xF8, 0x17, 0x2C, 0x25, 0x1C,
+        0xCB, 0x18, 0xE3, 0x6C, 0x80, 0x85, 0xDD, 0x7E, 0x09, 0xD9, 0xBC, 0x19, 0x8F, 0x1D, 0xD4, 0x3D, 0x37, 0xE1, 0x2F,
+        0x15, 0x8D, 0x64, 0x06, 0x04, 0xFD, 0x29, 0xCF, 0xFA, 0x14, 0x2E, 0x25, 0x1F, 0xC9, 0x18, 0xE3, 0x6D, 0x81, 0x84,
+        0x80, 0x3B, 0xB1, 0xE5, 0x4D, 0xF7, 0x51, 0x78, 0xA9, 0x13, 0xAD, 0xE9, 0x80, 0xC1, 0x0B, 0x25, 0x93, 0xFC,
+        0x4D, 0x89, 0x23, 0xC2, 0x7C, 0x0B, 0x59, 0x15, 0xF6, 0x01, 0x50, 0x55, 0xBF, 0x81, 0x75, 0xC3, 0x10, 0x31, 0xB5,
+        0xD3, 0x69, 0x84, 0x89, 0xBA, 0xD6, 0x89, 0xBD, 0x70, 0x19, 0x8E, 0x58, 0xA8, 0x3D, 0x9B, 0x5D, 0xF0, 0x49,
+        0xE8, 0xAD, 0x9D, 0x7A, 0x0D, 0x7E, 0x24, 0xDA, 0xFC, 0x0D, 0x14, 0xC5, 0x23, 0x91, 0x11, 0xF5, 0xC0, 0x4B, 0xCD,
+        0x44, 0x1C, 0xC5, 0x21, 0xDF, 0x61, 0x54, 0xED, 0xA2, 0x81, 0xB7, 0xE5, 0x74, 0x94, 0xB0, 0x47, 0xEE, 0xF1,
+        0xA5, 0xBB, 0x21, 0xC8
+};
+
+static int guncon3_decode(unsigned char *data, const unsigned char *key,unsigned char *data_decoded) {
+    int x, y, key_index;
+    unsigned char bkey, keyr, byte;
+    char a_sum, b_sum, key_offset;
+
+    b_sum = ((data[13] ^ data[12]) + data[11] + data[10] - data[9] - data[8]) ^ data[7];
+    a_sum = (((data[6] ^ b_sum) - data[5] - data[4]) ^ data[3]) + data[2] + data[1] - data[0];
+
+    key_offset = (((((key[1] ^ key[2]) - key[3] - key[4]) ^ key[5]) + key[6] - key[7]) ^ data[14]) + (unsigned char)0x26;
+    key_index = 4;
+
+    //byte E is part of the key offset
+    // byte D is ignored, possibly a padding byte - make the checksum workout
+    for (x = 12; x >= 0; x--) {
+        byte = data[x];
+        for (y = 4; y > 1; y--) { // loop 3 times
+            key_offset--;
+
+            bkey = KEY_TABLE[key_offset + 0x41];
+            keyr = key[key_index];
+            if (--key_index == 0)
+                key_index = 7;
+
+            if ((bkey & 3) == 0)
+                byte =(byte - bkey) - keyr;
+            else if ((bkey & 3) == 1)
+                byte = ((byte + bkey) + keyr);
+            else
+                byte = ((byte ^ bkey) ^ keyr);
+        }
+        data_decoded[x] = byte;
+    }
+    return 0;
+}
+
+static void guncon3_usb_irq(struct urb *urb) {
+    struct guncon3 *guncon3 = urb->context;
     unsigned char *data = urb->transfer_buffer;
-    int error, buttons;
+    unsigned char data_decoded[15];
+    int error;
+    unsigned long buttons;
     unsigned short x, y;
     signed char hat_x = 0;
     signed char hat_y = 0;
-
+    unsigned short _X_MIN, _X_MAX;
+    int status;
     switch (urb->status) {
         case 0:
             /* success */
             break;
         case -ETIME:
             /* this urb is timing out */
-            dev_dbg(&guncon2->intf->dev,
+            dev_dbg(&guncon3->intf->dev,
                     "%s - urb timed out - was the device unplugged?\n",
                     __func__);
             return;
@@ -77,116 +151,138 @@ static void guncon2_usb_irq(struct urb *urb) {
         case -ESHUTDOWN:
         case -EPIPE:
             /* this urb is terminated, clean up */
-            dev_dbg(&guncon2->intf->dev, "%s - urb shutting down with status: %d\n",
+            dev_dbg(&guncon3->intf->dev, "%s - urb shutting down with status: %d\n",
                     __func__, urb->status);
             return;
         default:
-            dev_dbg(&guncon2->intf->dev, "%s - nonzero urb status received: %d\n",
+            dev_dbg(&guncon3->intf->dev, "%s - nonzero urb status received: %d\n",
                     __func__, urb->status);
             goto exit;
     }
 
-    if (urb->actual_length == 6) {
+    if (urb->actual_length == 15) {
+        //decode
+        status = guncon3_decode(data,guncon3->key,data_decoded);
         /* Aiming */
-        x = (data[3] << 8) | data[2];
-        y = data[4];
+        //modif guncon3
+        x = (data_decoded[4] << 8) | data_decoded[3];
+        y = (data_decoded[6] << 8) | data_decoded[5];
+        hat_y = data_decoded[0];
+        hat_x = data_decoded[1];
 
-        input_report_abs(guncon2->input_device, ABS_X, x);
-        input_report_abs(guncon2->input_device, ABS_Y, y);
+        input_report_abs(guncon3->input_device, ABS_X, x);
+        input_report_abs(guncon3->input_device, ABS_Y, y);
 
         /* Buttons */
-        buttons = ((data[0] << 8) | data[1]) ^ 0xffff;
+        buttons = ((data_decoded[10] << 16) | data_decoded[11]<<8 | data_decoded[12]) ^ 0xffffff;
 
-        // d-pad
-        if (buttons & GUNCON2_DPAD_LEFT) {// left
-            hat_x -= 1;
-        }
-        if (buttons & GUNCON2_DPAD_RIGHT) {// right
-            hat_x += 1;
-        }
-        if (buttons & GUNCON2_DPAD_UP) {// up
-            hat_y -= 1;
-        }
-        if (buttons & GUNCON2_DPAD_DOWN) {// down
-            hat_y += 1;
-        }
-        input_report_abs(guncon2->input_device, ABS_HAT0X, hat_x);
-        input_report_abs(guncon2->input_device, ABS_HAT0Y, hat_y);
+        input_report_abs(guncon3->input_device, ABS_HAT0X, hat_x);
+        input_report_abs(guncon3->input_device, ABS_HAT0Y, hat_y);
 
         // main buttons
-        input_report_key(guncon2->input_device, BTN_LEFT, buttons & GUNCON2_TRIGGER);
-        input_report_key(guncon2->input_device, BTN_RIGHT, buttons & GUNCON2_BTN_A || buttons & GUNCON2_BTN_C);
-        input_report_key(guncon2->input_device, BTN_MIDDLE, buttons & GUNCON2_BTN_B);
-        input_report_key(guncon2->input_device, BTN_A, buttons & GUNCON2_BTN_A);
-        input_report_key(guncon2->input_device, BTN_B, buttons & GUNCON2_BTN_B);
-        input_report_key(guncon2->input_device, BTN_C, buttons & GUNCON2_BTN_C);
-        input_report_key(guncon2->input_device, BTN_START, buttons & GUNCON2_BTN_START);
-        input_report_key(guncon2->input_device, BTN_SELECT, buttons & GUNCON2_BTN_SELECT);
+        input_report_key(guncon3->input_device, BTN_LEFT, buttons & GUNCON3_TRIGGER);
+        input_report_key(guncon3->input_device, BTN_RIGHT, buttons & GUNCON3_BTN_A || buttons & GUNCON3_BTN_C);
+        input_report_key(guncon3->input_device, BTN_MIDDLE, buttons & GUNCON3_BTN_B);
+        input_report_key(guncon3->input_device, BTN_A, buttons & GUNCON3_BTN_A);
+        input_report_key(guncon3->input_device, BTN_B, buttons & GUNCON3_BTN_B);
+        input_report_key(guncon3->input_device, BTN_C, buttons & GUNCON3_BTN_C);
+        input_report_key(guncon3->input_device, BTN_START, buttons & GUNCON3_BTN_START);
+        input_report_key(guncon3->input_device, BTN_SELECT, buttons & GUNCON3_BTN_SELECT);
+        
+        //micro calibration
+        if ((hat_x==0)) {
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X) - 1;	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X); 	
+            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+        }	
+        if ((hat_x==255)) {
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X) + 1;	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X); 	
+            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+        }
+        if ((hat_y==255)) {
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X);	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X) - 1; 	
+            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+        }	
+        if ((hat_y==0)) {
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X);	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X) + 1; 	
+            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+        }	
 
-        input_sync(guncon2->input_device);
+        input_sync(guncon3->input_device);
     }
 
 exit:
     /* Resubmit to fetch new fresh URBs */
     error = usb_submit_urb(urb, GFP_ATOMIC);
     if (error && error != -EPERM)
-        dev_err(&guncon2->intf->dev,
+        dev_err(&guncon3->intf->dev,
                 "%s - usb_submit_urb failed with result: %d",
                 __func__, error);
 }
 
-static int guncon2_open(struct input_dev *input) {
+static int guncon3_open(struct input_dev *input) {
     unsigned char *gmode;
-    struct guncon2 *guncon2 = input_get_drvdata(input);
-    struct usb_device *usb_dev = interface_to_usbdev(guncon2->intf);
+    struct guncon3 *guncon3 = input_get_drvdata(input);
+    struct usb_device *usb_dev = interface_to_usbdev(guncon3->intf);
     int retval;
-    mutex_lock(&guncon2->pm_mutex);
+    int actual_length;
+    mutex_lock(&guncon3->pm_mutex);
 
     gmode = kzalloc(6, GFP_KERNEL);
     if (!gmode)
         return -ENOMEM;
 
-    /* set the mode to normal 50Hz mode */
-    gmode[5] = 1;
-    usb_control_msg(usb_dev, usb_sndctrlpipe(usb_dev, 0),
-                    0x09, 0x21, 0x200, 0, gmode, 6, 100000);
+    /* set the key */
+    guncon3->key[0] = 0x01;
+    guncon3->key[1] = 0x12;
+    guncon3->key[2] = 0x6F;
+    guncon3->key[3] = 0x32;
+    guncon3->key[4] = 0x24;
+    guncon3->key[5] = 0x60;
+    guncon3->key[6] = 0x17;
+    guncon3->key[7] = 0x21;
+    usb_interrupt_msg(usb_dev, usb_sndisocpipe(usb_dev, 0),
+                    guncon3->key, 8, &actual_length, 100000);
 
     kfree(gmode);
 
-    retval = usb_submit_urb(guncon2->urb, GFP_KERNEL);
+    retval = usb_submit_urb(guncon3->urb, GFP_KERNEL);
     if (retval) {
-        dev_err(&guncon2->intf->dev,
+        dev_err(&guncon3->intf->dev,
                 "%s - usb_submit_urb failed, error: %d\n",
                 __func__, retval);
         retval = -EIO;
         goto out;
     }
 
-    guncon2->is_open = true;
+    guncon3->is_open = true;
 
 out:
-    mutex_unlock(&guncon2->pm_mutex);
+    mutex_unlock(&guncon3->pm_mutex);
     return retval;
 }
 
-static void guncon2_close(struct input_dev *input) {
-    struct guncon2 *guncon2 = input_get_drvdata(input);
-    mutex_lock(&guncon2->pm_mutex);
-    usb_kill_urb(guncon2->urb);
-    guncon2->is_open = false;
-    mutex_unlock(&guncon2->pm_mutex);
+static void guncon3_close(struct input_dev *input) {
+    struct guncon3 *guncon3 = input_get_drvdata(input);
+    mutex_lock(&guncon3->pm_mutex);
+    usb_kill_urb(guncon3->urb);
+    guncon3->is_open = false;
+    mutex_unlock(&guncon3->pm_mutex);
 }
 
-static void guncon2_free_urb(void *context) {
-    struct guncon2 *guncon2 = context;
+static void guncon3_free_urb(void *context) {
+    struct guncon3 *guncon3 = context;
 
-    usb_free_urb(guncon2->urb);
+    usb_free_urb(guncon3->urb);
 }
 
-static int guncon2_probe(struct usb_interface *intf,
+static int guncon3_probe(struct usb_interface *intf,
                          const struct usb_device_id *id) {
     struct usb_device *udev = interface_to_usbdev(intf);
-    struct guncon2 *guncon2;
+    struct guncon3 *guncon3;
     struct usb_endpoint_descriptor *epirq;
     size_t xfer_size;
     void *xfer_buf;
@@ -203,156 +299,159 @@ static int guncon2_probe(struct usb_interface *intf,
         return error;
     }
 
-    /* Allocate memory for the guncon2 struct using devm */
-    guncon2 = devm_kzalloc(&intf->dev, sizeof(*guncon2), GFP_KERNEL);
-    if (!guncon2)
+    /* Allocate memory for the guncon3 struct using devm */
+    guncon3 = devm_kzalloc(&intf->dev, sizeof(*guncon3), GFP_KERNEL);
+    if (!guncon3)
         return -ENOMEM;
 
-    mutex_init(&guncon2->pm_mutex);
-    guncon2->intf = intf;
+    mutex_init(&guncon3->pm_mutex);
+    guncon3->intf = intf;
 
-    usb_set_intfdata(guncon2->intf, guncon2);
+    usb_set_intfdata(guncon3->intf, guncon3);
 
     xfer_size = usb_endpoint_maxp(epirq);
     xfer_buf = devm_kmalloc(&intf->dev, xfer_size, GFP_KERNEL);
     if (!xfer_buf)
         return -ENOMEM;
 
-    guncon2->urb = usb_alloc_urb(0, GFP_KERNEL);
-    if (!guncon2->urb)
+    guncon3->urb = usb_alloc_urb(0, GFP_KERNEL);
+    if (!guncon3->urb)
         return -ENOMEM;
 
-    error = devm_add_action_or_reset(&intf->dev, guncon2_free_urb, guncon2);
+    error = devm_add_action_or_reset(&intf->dev, guncon3_free_urb, guncon3);
     if (error)
         return error;
 
     /* set to URB for the interrupt interface  */
-    usb_fill_int_urb(guncon2->urb, udev,
+    usb_fill_int_urb(guncon3->urb, udev,
                      usb_rcvintpipe(udev, epirq->bEndpointAddress),
-                     xfer_buf, xfer_size, guncon2_usb_irq, guncon2, 1);
+                     xfer_buf, xfer_size, guncon3_usb_irq, guncon3, 1);
 
     /* get path tree for the usb device */
-    usb_make_path(udev, guncon2->phys, sizeof(guncon2->phys));
-    strlcat(guncon2->phys, "/input0", sizeof(guncon2->phys));
+    usb_make_path(udev, guncon3->phys, sizeof(guncon3->phys));
+    strlcat(guncon3->phys, "/input0", sizeof(guncon3->phys));
 
     /* Button related */
-    guncon2->input_device = devm_input_allocate_device(&intf->dev);
-    if (!guncon2->input_device) {
+    guncon3->input_device = devm_input_allocate_device(&intf->dev);
+    if (!guncon3->input_device) {
         dev_err(&intf->dev, "couldn't allocate input_device input device\n");
         return -ENOMEM;
     }
 
-    guncon2->input_device->name = "Namco GunCon 2";
-    guncon2->input_device->phys = guncon2->phys;
+    guncon3->input_device->name = "Namco GunCon 3";
+    guncon3->input_device->phys = guncon3->phys;
 
-    guncon2->input_device->open = guncon2_open;
-    guncon2->input_device->close = guncon2_close;
+    guncon3->input_device->open = guncon3_open;
+    guncon3->input_device->close = guncon3_close;
 
-    usb_to_input_id(udev, &guncon2->input_device->id);
 
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_LEFT);
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_RIGHT);
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_MIDDLE);
-    input_set_capability(guncon2->input_device, EV_ABS, ABS_X);
-    input_set_capability(guncon2->input_device, EV_ABS, ABS_Y);
 
-    input_set_abs_params(guncon2->input_device, ABS_X, X_MIN, X_MAX, 0, 0);
-    input_set_abs_params(guncon2->input_device, ABS_Y, Y_MIN, Y_MAX, 0, 0);
+    usb_to_input_id(udev, &guncon3->input_device->id);
 
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_A);
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_B);
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_C);
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_START);
-    input_set_capability(guncon2->input_device, EV_KEY, BTN_SELECT);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_LEFT);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_RIGHT);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_MIDDLE);
+    input_set_capability(guncon3->input_device, EV_ABS, ABS_X);
+    input_set_capability(guncon3->input_device, EV_ABS, ABS_Y);
+
+    input_set_abs_params(guncon3->input_device, ABS_X, X_MIN, X_MAX, 0, 0);
+    input_set_abs_params(guncon3->input_device, ABS_Y, Y_MIN, Y_MAX, 0, 0);
+
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_A);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_B);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_C);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_START);
+    input_set_capability(guncon3->input_device, EV_KEY, BTN_SELECT);
 
     // D-Pad
-    input_set_capability(guncon2->input_device, EV_ABS, ABS_HAT0X);
-    input_set_capability(guncon2->input_device, EV_ABS, ABS_HAT0Y);
-    input_set_abs_params(guncon2->input_device, ABS_HAT0X, -1, 1, 0, 0);
-    input_set_abs_params(guncon2->input_device, ABS_HAT0Y, -1, 1, 0, 0);
+    input_set_capability(guncon3->input_device, EV_ABS, ABS_HAT0X);
+    input_set_capability(guncon3->input_device, EV_ABS, ABS_HAT0Y);
+    input_set_abs_params(guncon3->input_device, ABS_HAT0X, 0, 255, 0, 0);
+    input_set_abs_params(guncon3->input_device, ABS_HAT0Y, 0, 255, 0, 0);
 
-    input_set_drvdata(guncon2->input_device, guncon2);
+    input_set_drvdata(guncon3->input_device, guncon3);
 
-    error = input_register_device(guncon2->input_device);
+    //guncon3_send_key
+    error = input_register_device(guncon3->input_device);
     if (error)
         return error;
 
     return 0;
 }
 
-static void guncon2_disconnect(struct usb_interface *intf) {
+static void guncon3_disconnect(struct usb_interface *intf) {
     /* All driver resources are devm-managed. */
 }
 
-static int guncon2_suspend(struct usb_interface *intf, pm_message_t message) {
-    struct guncon2 *guncon2 = usb_get_intfdata(intf);
+static int guncon3_suspend(struct usb_interface *intf, pm_message_t message) {
+    struct guncon3 *guncon3 = usb_get_intfdata(intf);
 
-    mutex_lock(&guncon2->pm_mutex);
-    if (guncon2->is_open) {
-        usb_kill_urb(guncon2->urb);
+    mutex_lock(&guncon3->pm_mutex);
+    if (guncon3->is_open) {
+        usb_kill_urb(guncon3->urb);
     }
-    mutex_unlock(&guncon2->pm_mutex);
+    mutex_unlock(&guncon3->pm_mutex);
 
     return 0;
 }
 
-static int guncon2_resume(struct usb_interface *intf) {
-    struct guncon2 *guncon2 = usb_get_intfdata(intf);
+static int guncon3_resume(struct usb_interface *intf) {
+    struct guncon3 *guncon3 = usb_get_intfdata(intf);
     int retval = 0;
 
-    mutex_lock(&guncon2->pm_mutex);
-    if (guncon2->is_open && usb_submit_urb(guncon2->urb, GFP_KERNEL) < 0) {
+    mutex_lock(&guncon3->pm_mutex);
+    if (guncon3->is_open && usb_submit_urb(guncon3->urb, GFP_KERNEL) < 0) {
         retval = -EIO;
     }
 
-    mutex_unlock(&guncon2->pm_mutex);
+    mutex_unlock(&guncon3->pm_mutex);
     return retval;
 }
 
-static int guncon2_pre_reset(struct usb_interface *intf) {
-    struct guncon2 *guncon2 = usb_get_intfdata(intf);
+static int guncon3_pre_reset(struct usb_interface *intf) {
+    struct guncon3 *guncon3 = usb_get_intfdata(intf);
 
-    mutex_lock(&guncon2->pm_mutex);
-    usb_kill_urb(guncon2->urb);
+    mutex_lock(&guncon3->pm_mutex);
+    usb_kill_urb(guncon3->urb);
     return 0;
 }
 
-static int guncon2_post_reset(struct usb_interface *intf) {
-    struct guncon2 *guncon2 = usb_get_intfdata(intf);
+static int guncon3_post_reset(struct usb_interface *intf) {
+    struct guncon3 *guncon3 = usb_get_intfdata(intf);
     int retval = 0;
 
-    if (guncon2->is_open && usb_submit_urb(guncon2->urb, GFP_KERNEL) < 0) {
+    if (guncon3->is_open && usb_submit_urb(guncon3->urb, GFP_KERNEL) < 0) {
         retval = -EIO;
     }
 
-    mutex_unlock(&guncon2->pm_mutex);
+    mutex_unlock(&guncon3->pm_mutex);
 
     return retval;
 }
 
-static int guncon2_reset_resume(struct usb_interface *intf) {
-    return guncon2_resume(intf);
+static int guncon3_reset_resume(struct usb_interface *intf) {
+    return guncon3_resume(intf);
 }
 
-static const struct usb_device_id guncon2_table[] = {
-        {USB_DEVICE(NAMCO_VENDOR_ID, GUNCON2_PRODUCT_ID)},
+static const struct usb_device_id guncon3_table[] = {
+        {USB_DEVICE(NAMCO_VENDOR_ID, GUNCON3_PRODUCT_ID)},
         {}};
 
-MODULE_DEVICE_TABLE(usb, guncon2_table);
+MODULE_DEVICE_TABLE(usb, guncon3_table);
 
-static struct usb_driver guncon2_driver = {
-        .name = "guncon2",
-        .probe = guncon2_probe,
-        .disconnect = guncon2_disconnect,
-        .id_table = guncon2_table,
-        .suspend = guncon2_suspend,
-        .resume = guncon2_resume,
-        .pre_reset = guncon2_pre_reset,
-        .post_reset = guncon2_post_reset,
-        .reset_resume = guncon2_reset_resume,
+static struct usb_driver guncon3_driver = {
+        .name = "guncon3",
+        .probe = guncon3_probe,
+        .disconnect = guncon3_disconnect,
+        .id_table = guncon3_table,
+        .suspend = guncon3_suspend,
+        .resume = guncon3_resume,
+        .pre_reset = guncon3_pre_reset,
+        .post_reset = guncon3_post_reset,
+        .reset_resume = guncon3_reset_resume,
 };
 
-module_usb_driver(guncon2_driver);
+module_usb_driver(guncon3_driver);
 
 MODULE_AUTHOR("beardypig <beardypig@protonmail.com>");
 MODULE_DESCRIPTION("Namco GunCon 2");
