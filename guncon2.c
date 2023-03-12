@@ -263,7 +263,7 @@ static int guncon3_open(struct input_dev *input) {
     guncon3->key[5] = 0x60;
     guncon3->key[6] = 0x17;
     guncon3->key[7] = 0x21;
-    status=usb_interrupt_msg(usb_dev, usb_sndisocpipe(usb_dev, 0),
+    status=usb_interrupt_msg(usb_dev, usb_sndintpipe(usb_dev, 2),
                     guncon3->key, 8, &actual_length, 100000);
     if(status<0)
     {
