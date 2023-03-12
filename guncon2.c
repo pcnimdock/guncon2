@@ -17,7 +17,7 @@
 #include <linux/usb.h>
 #include <linux/usb/input.h>
 
-static unsigned long debug = 0;
+static unsigned long debug = 1;
 module_param(debug, ulong, 0444);
 MODULE_PARM_DESC(debug, "Enable Debugging");
 
@@ -29,6 +29,17 @@ MODULE_PARM_DESC(debug, "Enable Debugging");
 //data[11] = C1       0       Trigger   Out_range   one_reference   B1 B2 0
 //data[12] = 0        0       0         0           C2              A1 A2 0
 
+/*
+     input_report_key(dev, BTN_TRIGGER, (data[1] & 0x20));
+    input_report_key(dev, BTN_0, (data[0] & 0x04));    // A
+    input_report_key(dev, BTN_1, (data[0] & 0x02));
+    input_report_key(dev, BTN_2, (data[1] & 0x04));    // B
+    input_report_key(dev, BTN_3, (data[1] & 0x02));
+    input_report_key(dev, BTN_4, (data[1] & 0x80));    // C
+    input_report_key(dev, BTN_5, (data[0] & 0x08));
+    input_report_key(dev, BTN_6, (data[2] & 0x80));    // Joystick buttons
+    input_report_key(dev, BTN_7, (data[2] & 0x40));
+    */
 #define GUNCON3_TRIGGER             BIT(14)
 #define GUNCON3_BTN_A1              BIT(3)
 #define GUNCON3_BTN_A2              BIT(2)
@@ -131,6 +142,12 @@ static int guncon3_decode(unsigned char *data, const unsigned char *key,unsigned
         }
         data_decoded[x] = byte;
     }
+            if (debug)
+        {    printk(KERN_ERR "%x %x %x %x %x %x %x %x %x %x %x %x",
+                           data_decoded[0],data_decoded[1],data_decoded[2],data_decoded[3],data_decoded[3],
+                           data_decoded[5],data_decoded[6],data_decoded[7],data_decoded[8],data_decoded[9],
+                           data_decoded[10],data_decoded[11]);
+        }
     return 0;
 }
 
@@ -178,16 +195,17 @@ static void guncon3_usb_irq(struct urb *urb) {
         }
         /* Aiming */
         //modif guncon3
-        x = (data_decoded[4] << 8) | data_decoded[3];
-        y = (data_decoded[6] << 8) | data_decoded[5];
-        hat_y = data_decoded[0];
-        hat_x = data_decoded[1];
+        x= ((short)data_decoded[4] << 8) | (short)data_decoded[3];
+        y= ((short)data_decoded[6] << 8) | (short)data_decoded[5];
+        
+        hat_y = data_decoded[11];
+        hat_x = data_decoded[12];
 
-        input_report_abs(guncon3->input_device, ABS_X, x);
-        input_report_abs(guncon3->input_device, ABS_Y, y);
+        input_report_abs(guncon3->input_device, ABS_RX, x);
+        input_report_abs(guncon3->input_device, ABS_RY, y);
 
         /* Buttons */
-        buttons = ((data_decoded[10] << 16) | data_decoded[11]<<8 | data_decoded[12]) ^ 0xffffff;
+        buttons = ((data_decoded[2] << 16) | data_decoded[1]<<8 | data_decoded[0]) ^ 0xffffff;
 
         input_report_abs(guncon3->input_device, ABS_HAT0X, hat_x);
         input_report_abs(guncon3->input_device, ABS_HAT0Y, hat_y);
@@ -203,26 +221,29 @@ static void guncon3_usb_irq(struct urb *urb) {
         input_report_key(guncon3->input_device, BTN_SELECT, buttons & GUNCON3_BTN_SELECT);
         
         //micro calibration
+        /*
         if ((hat_x==0)) {
-            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X) - 1;	
-            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X); 	
-            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_RX) - 1;	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_RX); 	
+            input_set_abs_params(guncon3->input_device, ABS_RX, _X_MIN, _X_MAX, 0, 0);
         }	
         if ((hat_x==255)) {
-            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X) + 1;	
-            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X); 	
-            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_RX) + 1;	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_RX); 	
+            input_set_abs_params(guncon3->input_device, ABS_RX, _X_MIN, _X_MAX, 0, 0);
         }
         if ((hat_y==255)) {
-            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X);	
-            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X) - 1; 	
-            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_RX);	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_RX) - 1; 	
+            input_set_abs_params(guncon3->input_device, ABS_RX, _X_MIN, _X_MAX, 0, 0);
         }	
         if ((hat_y==0)) {
-            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_X);	
-            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_X) + 1; 	
-            input_set_abs_params(guncon3->input_device, ABS_X, _X_MIN, _X_MAX, 0, 0);
+            _X_MIN = input_abs_get_min(guncon3->input_device, ABS_RX);	
+            _X_MAX = input_abs_get_max(guncon3->input_device, ABS_LX) + 1; 	
+            input_set_abs_params(guncon3->input_device, ABS_RX, _X_MIN, _X_MAX, 0, 0);
         }	
+        */
+
 
         input_sync(guncon3->input_device);
     }
@@ -377,11 +398,11 @@ static int guncon3_probe(struct usb_interface *intf,
     input_set_capability(guncon3->input_device, EV_KEY, BTN_LEFT);
     input_set_capability(guncon3->input_device, EV_KEY, BTN_RIGHT);
     input_set_capability(guncon3->input_device, EV_KEY, BTN_MIDDLE);
-    input_set_capability(guncon3->input_device, EV_ABS, ABS_X);
-    input_set_capability(guncon3->input_device, EV_ABS, ABS_Y);
+    input_set_capability(guncon3->input_device, EV_ABS, ABS_RX);
+    input_set_capability(guncon3->input_device, EV_ABS, ABS_RY);
 
-    input_set_abs_params(guncon3->input_device, ABS_X, X_MIN, X_MAX, 0, 0);
-    input_set_abs_params(guncon3->input_device, ABS_Y, Y_MIN, Y_MAX, 0, 0);
+    input_set_abs_params(guncon3->input_device, ABS_RX, X_MIN, X_MAX, 0, 0);
+    input_set_abs_params(guncon3->input_device, ABS_RY, Y_MIN, Y_MAX, 0, 0);
 
     input_set_capability(guncon3->input_device, EV_KEY, BTN_A);
     input_set_capability(guncon3->input_device, EV_KEY, BTN_B);
