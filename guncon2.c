@@ -60,10 +60,10 @@ MODULE_PARM_DESC(debug, "Enable Debugging");
 
 
 // default calibration, can be updated with evdev-joystick
-#define X_MIN 176
-#define X_MAX 720
-#define Y_MIN 20
-#define Y_MAX 240
+#define X_MIN -32768
+#define X_MAX 32767
+#define Y_MIN -32768
+#define Y_MAX 32767
 
 struct guncon3 {
     struct input_dev *input_device;

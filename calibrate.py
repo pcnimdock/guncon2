@@ -14,12 +14,12 @@ from evdev import ecodes
 
 import logging
 
-log = logging.getLogger("guncon2-calibration")
+log = logging.getLogger("guncon3-calibration")
 
 Postion = namedtuple("Postion", ["x", "y"])
 
 
-class Guncon2(object):
+class Guncon3(object):
     def __init__(self, device):
         self.device = device
         self.pos = Postion(0, 0)
@@ -165,20 +165,20 @@ def main():
         parser.error("Invalid resolution, eg. 320x240")
         return
 
-    guncon2_dev = None
-    # find the first guncon2
+    guncon3_dev = None
+    # find the first guncon3
     for device in [evdev.InputDevice(path) for path in evdev.list_devices()]:
-        if device.name == "Namco GunCon 2":
-            guncon2_dev = device
+        if device.name == "Namco GunCon 3":
+            guncon3_dev = device
             break
 
-    if guncon2_dev is None:
-        sys.stderr.write("Failed to find any attached GunCon2 devices")
+    if guncon3_dev is None:
+        sys.stderr.write("Failed to find any attached GunCon3 devices")
         return 1
 
-    with guncon2_dev.grab_context():
+    with guncon3_dev.grab_context():
 
-        guncon = Guncon2(guncon2_dev)
+        guncon = Guncon3(guncon3_dev)
 
         pygame.init()
         pygame.font.init()
@@ -187,7 +187,7 @@ def main():
         start_text = font.render("Pull the TRIGGER to start calibration", True, WHITE)
         start_text_w = start_text.get_rect()[2] // 2
 
-        pygame.display.set_caption("GunCon 2 two-point calibration")
+        pygame.display.set_caption("GunCon 3 two-point calibration")
 
         screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
         clock = pygame.time.Clock()
@@ -212,7 +212,7 @@ def main():
             cx, cy = int(guncon.pos_normalised.x * width), int(guncon.pos_normalised.y * height)
             trigger = False
             for button, value in guncon.update():
-                if button == ecodes.BTN_LEFT and value == 1:
+                if button == ecodes.BTN_TRIGGER and value == 1:
                     trigger = True
 
             raw_pos_txt = font.render(f"({raw_x}, {raw_y})", True, (128, 128, 255))
