@@ -4,4 +4,4 @@ make clean
 make modules
 make modules_install
 depmod -a
-modprobe guncon2
+modprobe guncon3

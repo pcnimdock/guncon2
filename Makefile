@@ -20,6 +20,6 @@ clean:
 
 else
 
-obj-m := guncon2.o
+obj-m := guncon3.o
 
 endif
