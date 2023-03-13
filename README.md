@@ -1,11 +1,13 @@
-# GunCon 2 USB Lightgun Driver
-Linux driver for the GunCon 2 light gun.
+# GunCon 3 USB Lightgun Driver
+Modificación sucia para usar la GunCon3 con el driver preparado para Guncon2
 
-The device reports absolute `ABS_X` and `ABS_Y` positions, the trigger button is reported as `BTN_LEFT`. The `ABS_X` and `ABS_Y` position reported by the device are raw values from the GunCon 2. 
+Linux driver for the GunCon 3 light gun.
+
+The device reports absolute `ABS_X` and `ABS_Y` positions, the trigger button is reported as `BTN_TRIGGER`. The `ABS_X` and `ABS_Y` position reported by the device are raw values from the GunCon 3. 
 
 ## Calibration
 
-The GunCon 2 will need to be calibrated for your display.
+The GunCon 3 will need to be calibrated for your display.
 
 The min and max values for `ABS_X` and `ABS_Y` can be changed by updating the calibration information using `evdev-joystick`.
 
